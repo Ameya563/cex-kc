@@ -3537,3 +3537,81 @@ void dumpResults(Aig_Man_t* SAig, map<int, string> id2NameF) {
 
 	// Aig_ManDumpBlif(SAig, aigPath, )
 }
+
+Aig_Man_t *basic_substitutions(Aig_Man_t *SAig, int idx){
+	assert(idx < numY);
+	Aig_Man_t *X = Aig_ManStartFrom(SAig);
+	Aig_Obj_t *pObj = Aig_Transfer(SAig, X, Aig_ManCo(SAig, 0)->pFanin0, Aig_ManCiNum(SAig));
+	Aig_ObjCreateCo(X, pObj);
+	vector<Aig_Obj_t *> funcs;
+	vector<int> vars;
+
+	for(int i = 0; i < idx; i++){
+		// induction hypothesis: current SAig has no conflicts upto index idx
+		// => quantifying out Y[1..idx-1] is the same as setting Y, Y_bar as 1
+		vars.push_back(varsYS[i] + numOrigInputs);
+		funcs.push_back(Aig_ManCi(X, varsYS[i]));
+	}
+	for(int i = idx; i < numY; i++){
+		// other Y_i_bar's are set normally. 
+		// A_i and B_i are circuits with CIs: X, Y[idx+1:]
+		vars.push_back(varsYS[i] + numOrigInputs);
+		funcs.push_back(Aig_Not(Aig_ManCi(X, varsYS[i])));
+	}
+	Aig_Obj_t *node = Aig_ComposeVec(X, pObj, funcs, vars);
+	funcs.clear();
+	vars.clear();
+	Aig_ObjPatchFanin0(X, Aig_ManCo(X, 0), node);
+	Aig_ManCiCleanup(X);
+	return X;
+}
+
+pair<Aig_Obj_t *, Aig_Obj_t *> get_nodes(Aig_Man_t *X, int idx){
+	assert(idx < numY);
+	Aig_Obj_t *pObj = Aig_ManCo(X, 0)->pFanin0;
+	vector<Aig_Obj_t *> funcs;
+	vector<int> vars;
+	for(int i = 0; i < idx; i++){
+		funcs.push_back(Aig_ManConst1(X));
+		vars.push_back(varsYS[i]);
+	}
+
+	funcs.push_back(Aig_ManConst1(X));
+	vars.push_back(varsYS[idx]);
+	Aig_Obj_t *node1 = Aig_ComposeVec(X, pObj, funcs, vars);
+
+	funcs.pop_back();
+	vars.pop_back();
+
+	funcs.push_back(Aig_ManConst0(X));
+	vars.push_back(varsYS[idx]);
+	Aig_Obj_t *node0 = Aig_ComposeVec(X, pObj, funcs, vars);
+	return pair<Aig_Obj_t *, Aig_Obj_t *>(node0, node1);
+}
+
+Aig_Man_t *extract_A(Aig_Man_t *SAig, int idx){
+	// vars quantified out upto idx-1
+	Aig_Man_t *A = basic_substitutions(SAig, idx);
+	assert(Aig_ManCiNum(A) == numOrigInputs);
+	pair<Aig_Obj_t *, Aig_Obj_t *> p = get_nodes(A, idx);
+	Aig_Obj_t *node = Aig_And(A, Aig_Not(p.first), p.second);
+	Aig_ObjPatchFanin0(A, Aig_ManCo(A, 0), node);
+	Aig_ManCleanup(A);
+	A = compressAig(A);
+	// printAig(A);
+	return A;
+}
+
+Aig_Man_t *extract_B(Aig_Man_t *SAig, int idx){
+	// vars quantified out upto idx-1
+	Aig_Man_t *B = basic_substitutions(SAig, idx);
+	assert(Aig_ManCiNum(B) == numOrigInputs);
+	pair<Aig_Obj_t *, Aig_Obj_t *> p = get_nodes(B, idx);
+	Aig_Obj_t *node = Aig_Not(Aig_Exor(B, p.first, p.second));
+	Aig_ObjPatchFanin0(B, Aig_ManCo(B, 0), node);
+	Aig_ManCleanup(B);
+	B = compressAig(B);
+	// printAig(B);
+	return B;
+}
+

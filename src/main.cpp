@@ -4,6 +4,7 @@
 ////////////////////////////////////////////////////////////////////////
 #include "helper.h"
 #include "nnf.h"
+#include <filesystem>
 
 using namespace std;
 
@@ -48,6 +49,18 @@ int main(int argc, char **argv)
 	int phaseCount = 0;
 
 	parseOptions(argc, argv);
+
+		std::filesystem::path dirPath(options.outFolderPath + "SkolemBasis/" + getFileName(options.benchmark));
+    try {
+        if (std::filesystem::create_directory(dirPath)) {
+            std::cout << "Directory created successfully: " << dirPath << std::endl;
+        } else {
+            std::cout << "Directory already exists: " << dirPath << std::endl;
+        }
+    } catch (const std::filesystem::filesystem_error& e) {
+        std::cerr << "Error creating directory: " << e.what() << std::endl;
+    }
+	auto basis_path = options.outFolderPath + "SkolemBasis/" + getFileName(options.benchmark) + "/";
 
 	FNtk = getNtk(options.benchmark, true);
 	FAig = Abc_NtkToDar(FNtk, 0, 0);
@@ -126,6 +139,14 @@ int main(int argc, char **argv)
 
 	int begSize = Aig_ManObjNum(SAig);
 	stoSAig = Aig_ManDupSimpleDfs(SAig);
+
+	Aig_Man_t *A = extract_A(SAig, pi.idx);
+	Aig_Man_t *B = extract_B(SAig, pi.idx);
+	// pi.idx is the index of the variable eliminated. varsYS[pi.idx] + 1 is the rank in the actual spec input ordering
+	Aig_ManDumpBlif(A, (basis_path + "A_" + to_string(pi.idx + 1) + "_" + to_string(varsYS[pi.idx] + 1) + ".blif").data(), 0, 0);
+	Aig_ManDumpBlif(B, (basis_path + "B_" + to_string(pi.idx + 1) + "_" + to_string(varsYS[pi.idx] + 1) + ".blif").data(), 0, 0);
+	Aig_ManStop(A);
+	Aig_ManStop(B);
 
 	if (options.conflictCheck == 0)
 	{
@@ -371,8 +392,16 @@ int main(int argc, char **argv)
 						}
 
 						Aig_ManCleanup(SAig);)
+						continue;
 				}
 			}
+			Aig_Man_t *A = extract_A(SAig, pi.idx);
+			Aig_Man_t *B = extract_B(SAig, pi.idx);
+			// pi.idx is the index of the variable eliminated. varsYS[pi.idx] + 1 is the rank in the actual spec input ordering
+			Aig_ManDumpBlif(A, (basis_path + "A_" + to_string(pi.idx + 1) + "_" + to_string(varsYS[pi.idx] + 1) + ".blif").data(), 0, 0);
+			Aig_ManDumpBlif(B, (basis_path + "B_" + to_string(pi.idx + 1) + "_" + to_string(varsYS[pi.idx] + 1) + ".blif").data(), 0, 0);
+			Aig_ManStop(A);
+			Aig_ManStop(B);
 		}
 	}
 
